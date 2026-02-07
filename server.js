@@ -2,8 +2,6 @@ const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const mongoose = require('mongoose');
-const { apiMonitor, onApiResponse } = require('@sannuk792/api-response-monitor');
-// const mysql = require('mysql2/promise'); // MySQL Disabled but kept
 
 dotenv.config();
 const app = express();
@@ -13,12 +11,23 @@ app.use(express.json());
 
 // --- API Response Monitor Storage ---
 const apiLogs = [];
-onApiResponse((log) => {
+
+// Helper function to log API requests
+const logApiRequest = (req, res, startTime) => {
+    const endTime = Date.now();
+    const log = {
+        timestamp: new Date().toISOString(),
+        method: req.method,
+        url: req.originalUrl || req.url,
+        status: res.statusCode,
+        latency: `${endTime - startTime}ms`,
+        success: res.statusCode >= 200 && res.statusCode < 400
+    };
     apiLogs.unshift(log);
     if (apiLogs.length > 100) apiLogs.pop();
-});
+};
 
-// --- API Monitor Endpoints (BEFORE middleware to avoid interception) ---
+// --- API Monitor Endpoints ---
 app.get('/api/monitor/logs', (req, res) => {
     res.json(apiLogs);
 });
@@ -27,9 +36,6 @@ app.delete('/api/monitor/logs', (req, res) => {
     apiLogs.length = 0;
     res.json({ message: 'API logs cleared' });
 });
-
-// --- API Response Monitor Middleware (after monitor endpoints) ---
-app.use(apiMonitor({ enabled: true, ignoreRoutes: ['/api/monitor', '/favicon.ico'] }));
 
 // --- MongoDB Configuration ---
 mongoose.connect(process.env.MONGODB_URI)
@@ -53,29 +59,11 @@ const employeeSchema = new mongoose.Schema({
 
 const Employee = mongoose.model('Employee', employeeSchema);
 
-// --- MySQL Configuration (DISABLED as requested) ---
-/*
-let db;
-const connectMySQL = async () => {
-    try {
-        db = await mysql.createPool({
-            host: process.env.DB_HOST || 'localhost',
-            user: process.env.DB_USER || 'root',
-            password: process.env.DB_PASSWORD || '1234',
-            database: process.env.DB_NAME || 'employee_db'
-        });
-        console.log('SQL Check: Connection Pool Ready (Disabled)');
-    } catch (err) {
-        console.error('SQL Error:', err);
-    }
-};
-connectMySQL();
-*/
-
 // --- API ROUTES (MongoDB) ---
 
 // Register Employee
 app.post('/api/employees', async (req, res) => {
+    const startTime = Date.now();
     try {
         const newEmployee = new Employee(req.body);
         const savedEmployee = await newEmployee.save();
@@ -84,13 +72,14 @@ app.post('/api/employees', async (req, res) => {
         console.error(err);
         res.status(500).json({ error: err.message });
     }
+    logApiRequest(req, res, startTime);
 });
 
 // Get Employees
 app.get('/api/employees', async (req, res) => {
+    const startTime = Date.now();
     try {
         const employees = await Employee.find().sort({ created_at: -1 });
-        // Transform _id to id for frontend compatibility
         const formattedEmployees = employees.map(emp => ({
             ...emp.toObject(),
             id: emp._id
@@ -100,10 +89,12 @@ app.get('/api/employees', async (req, res) => {
         console.error(err);
         res.status(500).json({ error: err.message });
     }
+    logApiRequest(req, res, startTime);
 });
 
 // Update Employee
 app.put('/api/employees/:id', async (req, res) => {
+    const startTime = Date.now();
     try {
         const updatedEmployee = await Employee.findByIdAndUpdate(
             req.params.id,
@@ -116,10 +107,12 @@ app.put('/api/employees/:id', async (req, res) => {
         console.error(err);
         res.status(500).json({ error: err.message });
     }
+    logApiRequest(req, res, startTime);
 });
 
 // Delete Employee
 app.delete('/api/employees/:id', async (req, res) => {
+    const startTime = Date.now();
     try {
         const deletedEmployee = await Employee.findByIdAndDelete(req.params.id);
         if (!deletedEmployee) return res.status(404).json({ error: 'Employee not found' });
@@ -128,6 +121,7 @@ app.delete('/api/employees/:id', async (req, res) => {
         console.error(err);
         res.status(500).json({ error: err.message });
     }
+    logApiRequest(req, res, startTime);
 });
 
 const PORT = process.env.PORT || 5000;
