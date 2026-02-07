@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const mongoose = require('mongoose');
+const { apiMonitor, onApiResponse } = require('@sannuk792/api-response-monitor');
 // const mysql = require('mysql2/promise'); // MySQL Disabled but kept
 
 dotenv.config();
@@ -9,6 +10,26 @@ const app = express();
 
 app.use(cors());
 app.use(express.json());
+
+// --- API Response Monitor Storage ---
+const apiLogs = [];
+onApiResponse((log) => {
+    apiLogs.unshift(log);
+    if (apiLogs.length > 100) apiLogs.pop();
+});
+
+// --- API Monitor Endpoints (BEFORE middleware to avoid interception) ---
+app.get('/api/monitor/logs', (req, res) => {
+    res.json(apiLogs);
+});
+
+app.delete('/api/monitor/logs', (req, res) => {
+    apiLogs.length = 0;
+    res.json({ message: 'API logs cleared' });
+});
+
+// --- API Response Monitor Middleware (after monitor endpoints) ---
+app.use(apiMonitor({ enabled: true, ignoreRoutes: ['/api/monitor', '/favicon.ico'] }));
 
 // --- MongoDB Configuration ---
 mongoose.connect(process.env.MONGODB_URI)

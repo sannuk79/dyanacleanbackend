@@ -12,6 +12,7 @@
   "type": "commonjs",
   "dependencies": {
     "@aws-sdk/client-s3": "^3.984.0",
+    "@sannuk792/api-response-monitor": "^1.0.9",
     "cors": "^2.8.6",
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
