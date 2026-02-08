@@ -3,11 +3,37 @@ const cors = require('cors');
 const dotenv = require('dotenv');
 const mongoose = require('mongoose');
 
+const { guard, guardMiddleware } = require('payload-guard-filter');
+
 dotenv.config();
 const app = express();
 
 app.use(cors());
 app.use(express.json());
+
+// --- Payload Guard Middleware ---
+app.use(guardMiddleware({
+    sanitizeBody: true,
+    filterResponse: true, // Automatically filter all res.json() calls if a shape is provided
+    devMode: process.env.NODE_ENV === 'development'
+}));
+
+// Define Employee Shape for reliable outputs
+const employeeShape = guard.shape({
+    id: 'any',
+    emp_id: 'string',
+    name: 'string',
+    email: 'string',
+    phone: 'string',
+    role: 'string',
+    department: 'string',
+    gender: 'string',
+    salary: 'string',
+    dob: 'any',
+    address: 'string',
+    experience: 'string',
+    created_at: 'any'
+});
 
 // --- API Response Monitor Storage ---
 const apiLogs = [];
@@ -67,7 +93,8 @@ app.post('/api/employees', async (req, res) => {
     try {
         const newEmployee = new Employee(req.body);
         const savedEmployee = await newEmployee.save();
-        res.status(201).json(savedEmployee);
+        // Use guard.shape to filter response data
+        res.status(201).json(employeeShape(savedEmployee));
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: err.message });
@@ -84,7 +111,8 @@ app.get('/api/employees', async (req, res) => {
             ...emp.toObject(),
             id: emp._id
         }));
-        res.json(formattedEmployees);
+        // Use guard.array to filter a list of objects
+        res.json(guard.array(employeeShape)(formattedEmployees));
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: err.message });
@@ -102,7 +130,7 @@ app.put('/api/employees/:id', async (req, res) => {
             { new: true }
         );
         if (!updatedEmployee) return res.status(404).json({ error: 'Employee not found' });
-        res.status(200).json({ ...updatedEmployee.toObject(), id: updatedEmployee._id });
+        res.status(200).json(employeeShape(updatedEmployee));
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: err.message });
